@@ -1,0 +1,46 @@
+version: 2
+
+sources:
+  - name: silver
+    description: "PySpark-ingested silver Parquet layers (Bronze → Silver via ingest_epc.py / ingest_core.py)"
+    tables:
+      - name: epc
+        description: "612,357 London social-rented EPC certificates (2012–2024), partitioned by borough"
+        meta:
+          path: "{{ env_var('SILVER_EPC_PATH', '../data/silver/epc/**/*.parquet') }}"
+        columns:
+          - name: certificate_id
+            description: "Unique EPC certificate number"
+          - name: borough
+            description: "London borough name (from local_authority_label)"
+          - name: epc_rating
+            description: "Current EPC band (A–G)"
+          - name: epc_score
+            description: "Current energy efficiency score (0–100)"
+          - name: below_epc_c
+            description: "True if rated D, E, F, or G — target for Warm Homes Fund"
+          - name: construction_age_band
+            description: "EPC construction age band string"
+          - name: co2_emissions
+            description: "CO₂ emissions (tonnes/year)"
+          - name: property_type
+            description: "Flat, House, etc."
+          - name: inspection_date
+            description: "Date of EPC inspection"
+
+  - name: bronze
+    description: "Raw source files — IMD 2019 LSOA-level CSV"
+    tables:
+      - name: imd
+        description: "MHCLG Index of Multiple Deprivation 2019 — one row per LSOA"
+        meta:
+          path: "{{ env_var('IMD_PATH', '../data/bronze/imd/imd2019_lsoa.csv') }}"
+        columns:
+          - name: "Local Authority District code (2019)"
+            description: "9-char LA code; London boroughs start with E09"
+          - name: "Local Authority District name (2019)"
+            description: "Borough name matching EPC borough field"
+          - name: "Index of Multiple Deprivation (IMD) Score"
+            description: "Overall IMD score at LSOA level"
+          - name: "Income Score (rate)"
+            description: "Income deprivation rate (0–1)"

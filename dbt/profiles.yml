@@ -1,0 +1,8 @@
+london_housing:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DBT_DB_PATH', '../data/gold/london_housing.duckdb') }}"
+      extensions:
+        - parquet

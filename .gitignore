@@ -12,6 +12,17 @@ data/gold/
 # ── Jupyter ───────────────────────────────────────────────────────────────────
 .ipynb_checkpoints/
 **/.ipynb_checkpoints/
+.jupyter/
+.jupyter_ystore.db
+
+# ── dbt ───────────────────────────────────────────────────────────────────────
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+*.duckdb
+
+# ── Prefect / orchestration logs ──────────────────────────────────────────────
+logs/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
@@ -48,3 +59,4 @@ metastore_db/
 
 # ── Claude Code ───────────────────────────────────────────────────────────────
 .claude/
+CLAUDE.md

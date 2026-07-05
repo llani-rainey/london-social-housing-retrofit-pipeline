@@ -1,8 +1,10 @@
 # London Social Housing Pipeline
 
+[![CI](https://github.com/llani-rainey/london-social-housing-retrofit-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/llani-rainey/london-social-housing-retrofit-pipeline/actions/workflows/ci.yml)
+
 The UK government's **Warm Homes: Social Housing Fund (£1.29bn, 2025–2028)** requires housing associations to identify and prioritise their worst-performing stock to bid for retrofit funding. This pipeline produces exactly that prioritisation.
 
-It ingests three public datasets — EPC certificates, CORE social lettings microdata, and the Index of Multiple Deprivation — cleans and joins them using a **Bronze → Silver → Gold medallion architecture** in PySpark, and answers a single research question:
+It ingests three public datasets — EPC certificates, CORE social lettings microdata, and the Index of Multiple Deprivation — cleans and joins them using a **Bronze → Silver → Gold medallion architecture** in PySpark, transforms them with **dbt + DuckDB**, and answers a single research question:
 
 **Which London boroughs have the worst social housing stock AND the most financially vulnerable tenants?**
 
@@ -114,9 +116,33 @@ Addresses a double-counting problem in the composite ranking: pre-1950 stock and
 ## Architecture
 
 ```
+Raw data (EPC CSVs, CORE .tab files, IMD CSV)
+        ↓
+PySpark ingestion — src/ingest_epc.py, src/ingest_core.py
+(handles 42 heterogeneous schemas, UDFs, geography mismatches)
+        ↓
+Silver Parquet (data/silver/) — cleaned, typed, filtered
+        ↓
+dbt transformations — dbt/models/
+(borough aggregations, EPC+IMD join, cost models, priority ranking)
+        ↓
+Gold (data/gold/) — DuckDB via dbt + Parquet via PySpark analysis scripts
+        ↓
+ML validation — notebooks/07_clustering_analysis.ipynb
+(PCA, K-means, hierarchical clustering — reads PySpark gold Parquet)
+```
+
+**Why this tool split?**
+- **PySpark**: handles the raw ingestion challenges — 42 heterogeneous schema variants, multi-GB CSV, Python UDFs for string-to-numeric conversion. The right tool when you're wrangling raw files.
+- **dbt + DuckDB**: implements the business logic transformations — joins, rankings, cost aggregations — in plain, tested, documented SQL. DuckDB reads Parquet natively; no warehouse needed. Makes the transformation layer auditable, testable, and easy to inspect.
+- **Jupyter notebooks**: the design and validation layer. Notebooks 05/06 document the methodology behind the dbt models; notebook 07 applies ML to validate the priority ranking.
+
+**Data layout:**
+
+```
 data/
 ├── bronze/          # Raw data, untransformed
-│   ├── epc/         # certificates-*.csv (one per London borough)
+│   ├── epc_raw/     # certificates-*.csv + recommendations-*.csv
 │   ├── core_raw/    # 42 tab-delimited files from UK Data Service
 │   └── imd/         # IMD 2019 LSOA CSV (File 7 from GOV.UK)
 │
@@ -125,12 +151,13 @@ data/
 │   └── core/        # 501k rows, partitioned by year
 │
 └── gold/            # Aggregated, analysis-ready tables
-    ├── borough_priority/            # 33 boroughs with composite priority score
+    ├── london_housing.duckdb        # dbt output — all mart models
+    ├── borough_priority/            # (PySpark fallback) 33 boroughs, composite score
     ├── london_affordability_trend/  # Rent-to-income ratio 2007–2022
     ├── epc_trend_top_boroughs/      # EPC improvement over time, top 5 boroughs
-    ├── borough_retrofit_costs/      # Avg cost per recommendation per borough (central estimate)
-    ├── borough_retrofit_scenarios/  # Optimistic / central / pessimistic cost per home + total (£m)
-    └── borough_wall_type/           # Cavity vs solid wall insulation split per borough (retrofit difficulty)
+    ├── borough_retrofit_costs/      # Avg cost per recommendation per borough
+    ├── borough_retrofit_scenarios/  # Optimistic / central / pessimistic cost per home + total
+    └── borough_wall_type/           # Cavity vs solid wall insulation split per borough
 ```
 
 ---
@@ -192,10 +219,13 @@ Each borough receives a rank 1–33 on three dimensions: % below EPC C, income d
 
 ## Tech Stack
 
-- **PySpark** (local mode) — all ingestion, transformation, and aggregation
-- **Parquet with Snappy compression** — silver and gold storage format
+- **PySpark** (local mode) — raw ingestion and silver build (bronze → silver)
+- **dbt-duckdb** — SQL transformation layer between silver and gold; 6 models, 24 schema tests
+- **DuckDB** — reads silver Parquet directly; no warehouse or cloud credentials needed
+- **Parquet with Snappy compression** — silver storage format
+- **scikit-learn** — PCA, K-means, hierarchical clustering in notebook 07
 - **Python 3.13**, Java 17 (OpenJDK), Jupyter notebooks
-- Designed to port directly to **Azure Databricks** — medallion pattern, partitioned Parquet, and PySpark UDFs are all Databricks-native. On Databricks, `OPTIMIZE` and `ZORDER BY borough` would be added to the gold layer for query performance.
+- Designed to port directly to **Azure Databricks** — medallion pattern, partitioned Parquet, and PySpark UDFs are all Databricks-native. On Databricks, dbt-databricks replaces dbt-duckdb, and `OPTIMIZE`/`ZORDER BY borough` would be added to the gold layer.
 
 ---
 
@@ -203,21 +233,47 @@ Each borough receives a rank 1–33 on three dimensions: % below EPC C, income d
 
 ```bash
 # Requirements: Java 17, Python 3.10+
-pip install pyspark jupyter
-
-# Run notebooks in order
-jupyter notebook
-# Then open and run 01 → 02 → 03 → 04 → 05 in sequence
+pip install -r requirements.txt
 ```
 
 **Data files are not included in this repository.** Download links:
-- **EPC**: [epc.opendatacommunities.org](https://epc.opendatacommunities.org/) — download domestic certificates for all London local authorities, place in `data/bronze/epc/`
-- **CORE**: [UK Data Service SN 9237](https://ukdataservice.ac.uk/) — free registration required, download TAB format, place in `data/bronze/core_raw/tab/`
-- **IMD**: [GOV.UK File 7](https://www.gov.uk/government/statistics/english-indices-of-deprivation-2019) — direct CSV download, place at `data/bronze/imd/imd2019_lsoa.csv`
+- **EPC**: [epc.opendatacommunities.org](https://epc.opendatacommunities.org/) — domestic certificates + recommendations for all London local authorities → `data/bronze/epc_raw/`
+- **CORE**: [UK Data Service SN 9237](https://ukdataservice.ac.uk/) — free registration required, download TAB format → `data/bronze/core_raw/tab/`
+- **IMD**: [GOV.UK File 7](https://www.gov.uk/government/statistics/english-indices-of-deprivation-2019) — direct CSV download → `data/bronze/imd/imd2019_lsoa.csv`
+
+### Notebook path (interactive / exploratory)
+
+```bash
+jupyter lab
+# Run notebooks in order: 01 → 02 → 03 → 04 → 05 → 06 → 07
+```
+
+### Production pipeline path (script + dbt)
+
+```bash
+# 1. Ingest bronze → silver, build PySpark gold
+python src/pipeline.py
+
+# 2. Run dbt transformations (silver → gold via DuckDB)
+cd dbt
+dbt run --profiles-dir .   # builds all 6 models
+dbt test --profiles-dir .  # runs 24 schema tests
+dbt docs generate --profiles-dir .
+dbt docs serve             # browse lineage graph at http://localhost:8080
+```
+
+### Tests (no Spark required)
+
+```bash
+pytest tests/test_helpers.py -v   # 18 pure Python tests, runs in CI
+pytest tests/test_gold.py -v      # validates CSV exports — skips unless notebooks 05–07 have been run
+```
 
 ---
 
 ## Files
+
+### Notebooks
 
 | File | Purpose |
 |---|---|
@@ -225,10 +281,39 @@ jupyter notebook
 | `notebooks/02_explore_core.ipynb` | CORE raw data exploration, schema discovery, quality issues |
 | `notebooks/03_ingest_epc.ipynb` | EPC bronze → silver ingestion pipeline |
 | `notebooks/04_ingest_core.ipynb` | CORE bronze → silver ingestion pipeline (multi-schema handling) |
-| `notebooks/05_build_gold.ipynb` | Gold layer: EPC + IMD join, composite priority ranking, CORE trend analysis |
-| `notebooks/06_recommendations_analysis.ipynb` | Retrofit cost analysis: improvement types, cost scenarios (low/mid/high), wall insulation by borough |
-| `notebooks/07_clustering_analysis.ipynb` | ML clustering: PCA, K-means, hierarchical clustering, comparison vs composite ranking |
-| `src/ingest_epc.py` | Script version of EPC ingestion |
-| `src/ingest_core.py` | Script version of CORE ingestion |
-| `src/build_gold.py` | Script version of gold build |
-| `src/pipeline.py` | Runs all three stages in sequence |
+| `notebooks/05_build_gold.ipynb` | Design notebook — EPC + IMD join, composite priority ranking (→ implemented in dbt) |
+| `notebooks/06_recommendations_analysis.ipynb` | Design notebook — retrofit cost analysis, wall type split (→ implemented in dbt) |
+| `notebooks/07_clustering_analysis.ipynb` | ML clustering: PCA, K-means, hierarchical clustering vs composite rank |
+
+### src/ — PySpark pipeline scripts
+
+| File | Purpose |
+|---|---|
+| `src/config.py` | Path resolution (`ROOT / data / bronze/silver/gold`) |
+| `src/helpers.py` | Pure Python helpers: `band_midpoint`, `cost_midpoint/low/high` |
+| `src/ingest_epc.py` | EPC bronze → silver (filters, column selection, fuel_category) |
+| `src/ingest_core.py` | CORE bronze → silver (42-file loop, schema variants, UDFs) |
+| `src/build_gold.py` | Gold: EPC+IMD join, priority ranking, affordability trend |
+| `src/analyse_recommendations.py` | Gold: retrofit costs, scenarios, wall type |
+| `src/pipeline.py` | Orchestrates all 4 stages in sequence |
+
+### dbt/ — SQL transformation layer
+
+| File | Purpose |
+|---|---|
+| `dbt/models/staging/stg_epc.sql` | Borough-level EPC aggregates from silver Parquet |
+| `dbt/models/staging/stg_imd.sql` | IMD 2019 LSOA → borough aggregation |
+| `dbt/models/marts/borough_priority.sql` | Composite priority ranking for 33 boroughs |
+| `dbt/models/marts/borough_retrofit_costs.sql` | Avg and total retrofit cost per borough |
+| `dbt/models/marts/borough_retrofit_scenarios.sql` | Optimistic / central / pessimistic cost scenarios |
+| `dbt/models/marts/borough_wall_type.sql` | Cavity vs solid wall split (retrofit difficulty) |
+| `dbt/models/schema.yml` | Column descriptions and 24 data quality tests |
+
+### tests/
+
+| File | Purpose |
+|---|---|
+| `tests/test_helpers.py` | 18 pure Python tests for UDF functions — runs in CI, no Spark |
+| `tests/test_gold.py` | Gold layer validation against CSV exports — local only (requires running notebooks 05–07 first) |
+| `tests/test_silver_epc.py` | Spark-based EPC silver validation (local only) |
+| `tests/test_silver_core.py` | Spark-based CORE silver validation (local only) |

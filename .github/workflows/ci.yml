@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint (ruff)
+        run: ruff check src/ tests/
+
+      - name: Syntax check src/
+        run: python -m py_compile src/config.py src/helpers.py src/ingest_epc.py src/ingest_core.py src/build_gold.py src/analyse_recommendations.py src/pipeline.py src/prefect_flow.py
+
+      - name: Run pure Python tests
+        run: pytest tests/test_helpers.py -v
+
+      - name: Run Spark unit tests
+        run: pytest tests/test_silver_epc.py tests/test_silver_core.py -v -m spark
+
+      - name: dbt deps
+        run: cd dbt && dbt deps --profiles-dir .
+
+      - name: dbt parse (syntax check models)
+        run: cd dbt && dbt parse --profiles-dir .

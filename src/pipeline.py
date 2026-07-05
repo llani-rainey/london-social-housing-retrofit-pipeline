@@ -1,42 +1,62 @@
 """
-pipeline.py — Run the full pipeline end to end
+pipeline.py — Run the full ingestion and gold build pipeline
 
 Usage:
-    python pipeline.py
+    python src/pipeline.py        (from repo root)
 
 Stages:
-    1. ingest_epc   — raw EPC CSV → bronze → silver
-    2. ingest_core  — raw CORE CSV → bronze → silver
-    3. build_gold   — silver EPC + CORE → gold analysis tables
+    1. ingest_epc              — EPC certificates CSV → Silver Parquet
+    2. ingest_core             — CORE lettings .tab files → Silver Parquet
+    3. build_gold              — Silver EPC + IMD CSV → Gold borough tables
+    4. analyse_recommendations — EPC recommendations CSV → Gold cost tables
+
+Note: clustering analysis (07_clustering_analysis.ipynb) is notebook-only —
+it uses scikit-learn and generates visualisations not suited to a batch script.
+Run it after this pipeline completes.
+
+Requires: JAVA_HOME pointing to JDK 17+, raw data in data/bronze/
 """
 
+import logging
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+from config import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
+SRC = Path(__file__).resolve().parent
 
 STAGES = [
-    ("EPC Ingest",  "src/ingest_epc.py"),
-    ("CORE Ingest", "src/ingest_core.py"),
-    ("Build Gold",  "src/build_gold.py"),
+    ("EPC Ingest",         SRC / "ingest_epc.py"),
+    ("CORE Ingest",        SRC / "ingest_core.py"),
+    ("Build Gold",         SRC / "build_gold.py"),
+    ("Recommendations",    SRC / "analyse_recommendations.py"),
 ]
 
-def run_stage(name, script):
-    print(f"\n{'='*60}")
-    print(f"  STAGE: {name}")
-    print(f"{'='*60}")
+
+def run_stage(name: str, script: Path) -> None:
+    logger.info("=" * 60)
+    logger.info("STAGE: %s", name)
+    logger.info("=" * 60)
     start = time.time()
-    result = subprocess.run([sys.executable, script], capture_output=False)
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(SRC),
+    )
     elapsed = time.time() - start
     if result.returncode != 0:
-        print(f"\n✗ {name} FAILED after {elapsed:.1f}s")
+        logger.error("✗ %s FAILED after %.1fs", name, elapsed)
         sys.exit(1)
-    print(f"\n✓ {name} completed in {elapsed:.1f}s")
+    logger.info("✓ %s completed in %.1fs", name, elapsed)
+
 
 if __name__ == "__main__":
     total_start = time.time()
     for name, script in STAGES:
         run_stage(name, script)
     total = time.time() - total_start
-    print(f"\n{'='*60}")
-    print(f"  Pipeline complete in {total:.1f}s")
-    print(f"{'='*60}")
+    logger.info("Pipeline complete in %.1fs", total)

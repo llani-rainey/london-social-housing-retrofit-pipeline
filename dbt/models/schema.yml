@@ -1,0 +1,197 @@
+version: 2
+
+models:
+  - name: stg_epc
+    description: "Borough-level EPC aggregates from silver Parquet (612k social-rented London certificates)"
+    columns:
+      - name: borough
+        description: "London borough name"
+        data_tests:
+          - not_null
+          - unique
+      - name: social_properties
+        description: "Count of EPC certificates (proxy for social housing stock size)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: pct_below_epc_c
+        description: "% of stock rated D, E, F, or G — Warm Homes Fund retrofit target"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_epc_score
+        description: "Mean current energy efficiency score (0–100, higher is better)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: pct_pre_1950
+        description: "% of stock built before 1950 (proxy for retrofit difficulty)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_co2_per_m2
+        description: "Mean CO₂ emissions in tonnes/year"
+
+  - name: stg_imd
+    description: "IMD 2019 LSOA data aggregated to London borough level (33 boroughs)"
+    columns:
+      - name: borough_key
+        description: "Uppercased borough name used for joining to EPC data"
+        data_tests:
+          - not_null
+          - unique
+      - name: imd_score
+        description: "Mean IMD 2019 score across the borough's LSOAs"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: income_deprivation_rate
+        description: "Mean income deprivation rate (0–1); borough-level proxy for tenant vulnerability"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: lsoa_count
+        description: "Number of LSOAs in the borough"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+
+  - name: borough_priority
+    description: >
+      Composite priority ranking of all 33 London boroughs for the Warm Homes:
+      Social Housing Fund. Lower priority_rank = higher urgency for retrofit funding.
+    columns:
+      - name: borough
+        description: "London borough name"
+        data_tests:
+          - not_null
+          - unique
+      - name: priority_rank
+        description: "Composite retrofit priority rank (1 = highest priority)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 33
+      - name: priority_score
+        description: "Average of rank_epc, rank_income, rank_age (lower = worse)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: pct_below_epc_c
+        description: "% of social stock rated below EPC C"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: income_deprivation_rate
+        description: "IMD 2019 income deprivation rate"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: pct_pre_1950
+        description: "% of stock built before 1950"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: borough_retrofit_costs
+    description: "Average and total indicative retrofit cost per London borough"
+    columns:
+      - name: borough
+        description: "London borough name"
+        data_tests:
+          - not_null
+          - unique
+      - name: total_recommendations
+        description: "Total improvement recommendations for the borough's social stock"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: avg_cost_per_recommendation
+        description: "Average indicative cost per recommendation (£)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_indicative_cost_m
+        description: "Total indicative cost across all recommendations (£ millions)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: borough_retrofit_scenarios
+    description: >
+      Optimistic / central / pessimistic retrofit cost scenarios per borough,
+      both in aggregate (£m) and per dwelling (£). Uncertainty reflects RdSAP
+      band ranges; real London costs are 15–30% higher than these national figures.
+    columns:
+      - name: borough
+        description: "London borough name"
+        data_tests:
+          - not_null
+          - unique
+      - name: properties_with_recs
+        description: "Number of distinct properties with at least one recommendation"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: per_home_optimistic
+        description: "Optimistic estimate of retrofit cost per property (£)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: per_home_central
+        description: "Central estimate of retrofit cost per property (£)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: per_home_pessimistic
+        description: "Pessimistic estimate of retrofit cost per property (£)"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_central_m
+        description: "Central estimate total retrofit cost (£ millions)"
+      - name: uncertainty_pct
+        description: "Spread between high and low scenarios as % of central estimate"
+
+  - name: borough_wall_type
+    description: >
+      Cavity vs solid wall insulation split by borough.
+      Solid wall (improvement_id=7) costs £8–25k vs cavity wall (id=6) ~£1.5k;
+      pct_solid_wall is used as the retrofit difficulty metric in clustering.
+    columns:
+      - name: borough
+        description: "London borough name"
+        data_tests:
+          - not_null
+          - unique
+      - name: pct_solid_wall
+        description: "% of wall recommendations that are solid wall (higher = harder/costlier)"
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: pct_cavity_wall
+        description: "% of wall recommendations that are cavity wall"
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
