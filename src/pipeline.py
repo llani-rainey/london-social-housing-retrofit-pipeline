@@ -23,6 +23,12 @@ import sys
 import time
 from pathlib import Path
 
+# Ensure `src/` is on sys.path so `from config import ...` works when this
+# script is run from anywhere (e.g. `python src/ingest_epc.py`, `python -m src.ingest_epc`).
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from config import setup_logging
 
 setup_logging()

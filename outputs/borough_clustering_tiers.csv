@@ -1,0 +1,34 @@
+borough,priority_rank,pca_rank,kmeans_tier,hc_cluster,pct_below_epc_c,income_deprivation_rate,pct_solid_wall
+Barking and Dagenham,1,3,Act now,0,54.6,0.1942,60.0
+Haringey,2,1,Act now,0,46.4,0.1683,78.2
+Hammersmith and Fulham,3,6,Act now,0,43.8,0.1423,77.1
+Lambeth,4,4,Act now,0,42.4,0.1563,76.0
+Enfield,5,8,Act now,0,47.5,0.168,62.0
+Kensington and Chelsea,6,15,Act now,2,43.0,0.1211,72.5
+Camden,6,7,Act now,0,44.4,0.14,75.6
+Hackney,7,2,Act next,1,35.8,0.1985,77.5
+Islington,8,5,Act next,1,39.5,0.1804,71.2
+Barnet,9,23,Monitor,2,46.8,0.1092,54.4
+Brent,10,12,Act next,1,36.3,0.154,71.0
+Redbridge,10,17,Act now,2,49.5,0.1186,63.4
+Westminster,11,13,Act next,2,35.3,0.1336,76.8
+Southwark,11,9,Act next,1,37.2,0.1637,71.2
+Lewisham,12,10,Act next,1,33.5,0.1662,71.1
+Newham,13,18,Deprioritise,1,39.3,0.1715,55.6
+Croydon,13,19,Act now,2,41.8,0.1338,62.0
+Ealing,14,22,Deprioritise,2,41.5,0.14,51.7
+Waltham Forest,15,14,Act next,1,35.4,0.1517,70.2
+Merton,16,21,Monitor,2,41.2,0.0982,66.9
+Wandsworth,17,16,Act next,2,38.2,0.1051,79.3
+Greenwich,18,11,Act next,1,35.0,0.1565,71.6
+Richmond upon Thames,19,25,Monitor,2,41.9,0.064,64.9
+Tower Hamlets,19,20,Deprioritise,1,34.8,0.1907,48.2
+Hillingdon,20,27,Deprioritise,2,42.3,0.1123,49.2
+Harrow,21,28,Deprioritise,3,37.1,0.1075,53.4
+City of London,21,30,Monitor,2,47.1,0.0627,56.2
+Kingston upon Thames,22,29,Monitor,2,37.9,0.0781,60.6
+Havering,23,26,Monitor,2,41.5,0.1047,53.2
+Hounslow,24,24,Deprioritise,3,33.6,0.1285,54.7
+Bexley,25,32,Deprioritise,3,36.3,0.1022,42.2
+Bromley,26,31,Deprioritise,3,32.7,0.0897,58.6
+Sutton,27,33,Deprioritise,3,28.8,0.0936,44.4

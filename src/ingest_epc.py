@@ -6,7 +6,13 @@ Download: Domestic EPCs → filter to London → all boroughs
 Files:  data/bronze/epc_raw/certificates-*.csv  (one file per year, 2012–2026)
 
 Silver output: data/silver/epc/  (Parquet, partitioned by borough)
-  612,357 rows — London social rented properties only
+  ~491,000 rows — London social rented properties, deduplicated to latest cert per property
+
+DEDUPLICATION: the raw data contains multiple certificates per property (average ~1.28×)
+from re-assessments on tenancy changes, retrofits, or historical backlog uploads. We keep
+only the LATEST certificate per property using UPRN as the primary dedup key (97.6% coverage)
+and postcode + address1 as the fallback. Without this step, borough below-C counts are
+inflated by ~28% and retrofitted properties appear twice (once below-C, once at-C).
 
 Run: python src/ingest_epc.py
 Requires: JAVA_HOME pointing to JDK 17+
@@ -14,10 +20,16 @@ Requires: JAVA_HOME pointing to JDK 17+
 
 import logging
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, to_date, trim, upper, when
+from pyspark.sql import DataFrame, SparkSession, Window
+from pyspark.sql.functions import coalesce, col, concat_ws, desc, row_number, to_date, trim, upper, when
 from pyspark.sql.functions import year as spark_year
 from pyspark.sql.types import FloatType
+
+# Ensure `src/` is on sys.path so `from config import ...` works when this
+# script is run from anywhere (e.g. `python src/ingest_epc.py`, `python -m src.ingest_epc`).
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import BRONZE, SILVER, setup_logging
 from helpers import validate_schema
@@ -27,15 +39,18 @@ logger = logging.getLogger(__name__)
 _REQUIRED_COLS = {
     "certificate_number", "local_authority_label", "tenure",
     "region", "current_energy_rating", "current_energy_efficiency",
+    "uprn", "postcode", "address1", "inspection_date",
 }
 
 
 def transform_epc(raw: DataFrame) -> DataFrame:
-    return (
+    projected = (
         raw
         .select(
             trim(col("certificate_number")).alias("certificate_id"),
+            trim(col("uprn")).alias("uprn"),
             trim(col("postcode")).alias("postcode"),
+            trim(col("address1")).alias("address1"),
             trim(col("local_authority")).alias("local_authority_code"),
             trim(col("local_authority_label")).alias("borough"),
             trim(col("tenure")).alias("tenure"),
@@ -59,6 +74,24 @@ def transform_epc(raw: DataFrame) -> DataFrame:
         .filter(upper(col("tenure")).isin("RENTAL (SOCIAL)", "SOCIAL RENTED", "RENTED (SOCIAL)"))
         .filter(col("region_code") == "E12000007")
         .filter(col("epc_rating").isNotNull())
+    )
+
+    # Dedup: one row per property, keep the latest inspection_date.
+    # Primary key = UPRN (97.6% coverage); fallback = postcode|address1 for the 2.4% missing.
+    dedup_key = coalesce(
+        when((col("uprn").isNotNull()) & (col("uprn") != ""), col("uprn")),
+        concat_ws("|", col("postcode"), col("address1")),
+    )
+    w = Window.partitionBy(dedup_key).orderBy(desc("inspection_date"), desc("certificate_id"))
+    deduped = (
+        projected
+        .withColumn("_rn", row_number().over(w))
+        .filter(col("_rn") == 1)
+        .drop("_rn")
+    )
+
+    return (
+        deduped
         .withColumn("below_epc_c", when(col("epc_rating").isin("D", "E", "F", "G"), True).otherwise(False))
         .withColumn("inspection_year", spark_year(col("inspection_date")))
         .withColumn(

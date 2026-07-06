@@ -30,6 +30,12 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import col, lit, trim, udf, when
 from pyspark.sql.types import FloatType
 
+# Ensure `src/` is on sys.path so `from config import ...` works when this
+# script is run from anywhere (e.g. `python src/ingest_epc.py`, `python -m src.ingest_epc`).
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from config import BRONZE, SILVER, setup_logging
 from helpers import band_midpoint
 
@@ -103,6 +109,10 @@ if __name__ == "__main__":
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("ERROR")
+
+    # Ship helpers.py to Spark worker processes so the UDF can import band_midpoint.
+    # (sys.path tricks only affect the driver — workers need the file distributed.)
+    spark.sparkContext.addPyFile(os.path.join(os.path.dirname(os.path.abspath(__file__)), "helpers.py"))
 
     midpoint_udf = udf(band_midpoint, FloatType())
 

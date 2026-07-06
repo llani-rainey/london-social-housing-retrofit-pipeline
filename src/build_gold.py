@@ -35,6 +35,12 @@ from pyspark.sql.functions import sum as spark_sum
 from pyspark.sql.functions import year as spark_year
 from pyspark.sql.window import Window
 
+# Ensure `src/` is on sys.path so `from config import ...` works when this
+# script is run from anywhere (e.g. `python src/ingest_epc.py`, `python -m src.ingest_epc`).
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from config import GOLD, IMD_CSV, SILVER, setup_logging
 
 logger = logging.getLogger(__name__)
