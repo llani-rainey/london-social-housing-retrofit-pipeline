@@ -78,6 +78,7 @@ def main() -> None:
             col("construction_age_band"),
             col("property_type"),
         )
+        .filter(col("borough").isNotNull())
     )
 
     recs = (
