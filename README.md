@@ -132,7 +132,7 @@ Two ML notebooks refine the picture further:
 
 ### Borough retrofit summary — all 33 London boroughs
 
-If a housing association or the GLA asked for one page they could take to a board meeting, this is the table — every below-C property, every borough, in one place. Sorted by median cost to C (descending) so the highest-exposure boroughs are at the top.
+Full borough-level breakdown of below-C stock, EPC C reachability, retrofit cost exposure, and £10k cap exposure across all 33 London boroughs. Sorted by median cost to C (descending) — highest-exposure boroughs at the top.
 
 | Borough | Below C | % reachable | Avg recs to C | Median cost to C (mid, low–high) | % over £10k cap | Avg EPC gap |
 |---|---:|---:|---:|---|---:|---:|
