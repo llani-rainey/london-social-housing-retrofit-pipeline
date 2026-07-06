@@ -17,7 +17,7 @@ from pyspark.sql import SparkSession
 from ingest_epc import transform_epc
 
 _COLS = [
-    "certificate_number", "postcode", "local_authority", "local_authority_label",
+    "certificate_number", "uprn", "postcode", "address1", "local_authority", "local_authority_label",
     "tenure", "property_type", "built_form", "construction_age_band",
     "current_energy_rating", "current_energy_efficiency", "total_floor_area",
     "main_fuel", "co2_emissions_current", "energy_consumption_current",
@@ -29,7 +29,9 @@ _COLS = [
 def _row(**overrides):
     defaults = dict(
         certificate_number="cert001",
+        uprn=None,
         postcode="SW1A 1AA",
+        address1="1 TEST STREET",
         local_authority="E09000022",
         local_authority_label="Lambeth",
         tenure="rental (social)",
@@ -51,6 +53,8 @@ def _row(**overrides):
         region="E12000007",
     )
     defaults.update(overrides)
+    if defaults["uprn"] is None:
+        defaults["uprn"] = f"UPRN-{defaults['certificate_number']}"
     return tuple(defaults[c] for c in _COLS)
 
 
@@ -156,3 +160,26 @@ def test_fuel_category_mapping(spark):
     assert cats["ec"] == "electric_community"
     assert cats["ot"] == "other"
     assert cats["nu"] is None
+
+
+@pytest.mark.spark
+def test_deduplicates_to_latest_certificate_by_uprn(spark):
+    rows = [
+        _row(
+            certificate_number="old",
+            uprn="same-property",
+            inspection_date="2018-01-01",
+            current_energy_rating="D",
+        ),
+        _row(
+            certificate_number="new",
+            uprn="same-property",
+            inspection_date="2022-01-01",
+            current_energy_rating="C",
+        ),
+    ]
+    silver = transform_epc(spark.createDataFrame(rows, _COLS))
+    result = silver.select("certificate_id", "epc_rating").collect()
+    assert len(result) == 1
+    assert result[0]["certificate_id"] == "new"
+    assert result[0]["epc_rating"] == "C"
